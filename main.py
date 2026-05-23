@@ -4,6 +4,7 @@ import sqlite3
 import discord
 import numpy as np
 import pandas as pd
+from datetime import date
 from discord.ext import commands
 from dotenv import load_dotenv
 from plotly_calplot import calplot
@@ -25,9 +26,9 @@ cursor = conn.cursor()
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS gym_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    person TEXT,
-    date TEXT,
-    duration_minutes INTEGER
+    person TEXT NOT NULL,
+    date TEXT NOT NULL,
+    duration_minutes INTEGER NOT NULL
 )
 """)
 conn.commit()
@@ -38,15 +39,30 @@ async def on_ready():
 
 
 @bot.command()
-async def gymmed(ctx):
+async def gymmed(ctx, duration: int):
+
     username = ctx.author.name
-    streak = None
-    await ctx.send(f"{username} has exercised today! Current streak:{streak}")
+    today = date.today().isoformat()
 
-    # run command
+    streak = 0
 
-    # checks username
-        #if the username is not in the database yet, create it
+    # connect to database
 
+    # check if username exists
 
+    # if user does not exist:
+        # create user entry
+
+    # insert today's gym session (duration)
+
+    # calculate streak
+
+    # generate heatmap
+
+    await ctx.send(f" {today} {username} has exercised for {duration} minutes. Current daily streak: {streak}")
 bot.run(TOKEN)
+
+
+
+
+
