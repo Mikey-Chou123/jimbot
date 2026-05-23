@@ -63,6 +63,19 @@ def get_or_create_user(user_id, name):
 async def on_ready():
     print("jimbot online now")
 
+async def on_guild_join(guild):
+    channel = guild.system_channel
+
+    # If no system channel, find the first text channel the bot can send in
+    if channel is None:
+        for text_channels in guild.text_channels:
+            if text_channels.permissions_for(guild.me).send_messages:
+                channel = text_channels
+                break
+
+    # Only send if a valid channel was found
+    if channel:
+        await channel.send("Hellow I am Jimbot (gym bot), go to the gym")
 
 @bot.command()
 #TODO: give users a hint that its in minutes
@@ -94,6 +107,5 @@ async def gymmed(ctx, duration: int):
     )
 
     # generate heatmap
-
 
 bot.run(TOKEN)
