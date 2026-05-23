@@ -27,7 +27,7 @@ cursor = conn.cursor()
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS gym_sessions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL
+        user_id INTEGER NOT NULL,
         person TEXT NOT NULL,
         date TEXT NOT NULL,
         duration INTEGER NOT NULL
