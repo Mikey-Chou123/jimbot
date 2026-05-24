@@ -102,7 +102,7 @@ def generate_heatmap(user_id):
 
     df["date"] = pd.to_datetime(df["date"]).astype("datetime64[ns]")
 
-    fig = calplot(df, x="date", y="value", dark_theme=True)
+    fig = calplot(df, x="date", y="value", dark_theme=True, gap=3)
 
     return fig
 
@@ -123,7 +123,7 @@ async def on_guild_join(guild):
                 break
 
     if channel:
-        await channel.send("Hellow I am Jimbot (gym bot), go to the gym")
+        await channel.send("Hellow I am Jimbot (gym bot), go to the gym! Type \"!gym_help\" to learn how to use!")
 
 # !gym_add (time)
 @bot.command()
@@ -204,5 +204,13 @@ async def gym_remove(ctx, duration: int):
         await ctx.send(f"{username}, you have no time logged today to remove from.")
     else:
         await ctx.send(f"{username} removed {duration} min. Total today: {total} min")
+
+@bot.command()
+async def gym_help(ctx):
+    await ctx.send(
+        "**Gym Bot Help**\n"
+        "`!gym_add <minutes>` → log workout time\n"
+        "`!gym_remove <minutes>` → remove workout time\n"
+    )
 
 bot.run(TOKEN)
