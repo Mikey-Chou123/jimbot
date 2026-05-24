@@ -36,12 +36,6 @@ CREATE TABLE IF NOT EXISTS gym_sessions (
     duration INTEGER NOT NULL,
     UNIQUE(user_id, date)
 );
-
-CREATE TABLE IF NOT EXISTS streaks (
-    user_id INTEGER PRIMARY KEY,
-    previous_date TEXT,
-    streak INTEGER
-);
 """)
 
 conn.commit()
@@ -72,12 +66,30 @@ def getTodayTotal(user_id, today):
     row = cursor.fetchone()
     return row[0] if row else 0
 
-def ensureStreakRow(user_id):
-    cursor.execute("""
-        INSERT INTO streaks (user_id, previous_date, streak)
-        VALUES (?, NULL, 0)
-        ON CONFLICT(user_id) DO NOTHING
-    """, (user_id,))
+def calculate_streak(user_id):
+    today = date.today()
+    streak = 0
+    day_offset = 0
+
+    while True:
+        day = today - timedelta(days=day_offset)
+        day_str = day.isoformat()
+
+        cursor.execute("""
+            SELECT duration FROM gym_sessions
+            WHERE user_id = ? AND date = ?
+        """, (user_id, day_str))
+
+        row = cursor.fetchone()
+        duration = row[0] if row else 0
+
+        if duration <= 0:
+            break
+
+        streak += 1
+        day_offset += 1
+
+    return streak
 
 def generate_heatmap(user_id):
     query = """
@@ -122,15 +134,12 @@ async def gym_add(ctx, duration: int):
         return
 
     user_id = ctx.author.id
-    username = ctx.author.name
+    username = ctx.author.display_name
 
     today = date.today()
-    yesterday = today - timedelta(days=1)
 
     today_str = today.isoformat()
-    yesterday_str = yesterday.isoformat()
 
-    getOrCreateUser(user_id, username)
 
     # adding the duration
     cursor.execute("""
@@ -143,50 +152,12 @@ async def gym_add(ctx, duration: int):
     conn.commit()
 
     total = getTodayTotal(user_id, today_str)
-    streak = 1
 
-    if total > 0:
-        #make sure the user_id exists
-        ensureStreakRow(user_id)
-
-        # get streak data 
-        cursor.execute(""" SELECT previous_date, streak FROM streaks WHERE user_id = ? """, (user_id,))
-        row = cursor.fetchone()
-
-        #this is for unpacking the tuple
-        previousDate, streak = row
-
-        # check yesterday activity
-        cursor.execute(""" SELECT duration FROM gym_sessions WHERE user_id = ? AND date = ? """, (user_id, yesterday_str))
-        yesterday_row = cursor.fetchone()
-
-        yesterday_active = yesterday_row is not None and yesterday_row[0] > 0
-
-        if previousDate is None:
-            streak = 1
-
-        elif previousDate == today_str:
-            pass
-
-        elif previousDate == yesterday_str and yesterday_active:
-            streak += 1
-
-        else:
-            streak = 1
-
-        # update the streak table 
-        cursor.execute("""
-            UPDATE streaks
-            SET previous_date = ?, streak = ?
-            WHERE user_id = ?
-        """, (today_str, streak, user_id))
-
-        conn.commit()
+    streak = calculate_streak(user_id)
 
     #final output
     await ctx.send(
             f"{username} trained {duration} min. Total today: {total} min"
-            f"\n Current streak: {streak}🔥"
             )
 
     # generate heatmap based on the minutes in each day
@@ -197,6 +168,10 @@ async def gym_add(ctx, duration: int):
     await ctx.send(
         file=discord.File(io.BytesIO(buf), filename="heatmap.png")
     )
+
+    await ctx.send(
+            f"\n Current streak: {streak}🔥"
+            )
 
 # !gym_remove (time)
 @bot.command()
