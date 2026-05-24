@@ -20,7 +20,7 @@ bot = commands.Bot(command_prefix="!", intents=intents) # Change the symbol to y
 
 # ----- Database setup -----
 
-conn = sqlite3.connect("gym.db")
+conn = sqlite3.connect("gym.db", check_same_thread=False)
 cursor = conn.cursor()
 
 cursor.executescript("""
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS gym_sessions (
 
 CREATE TABLE IF NOT EXISTS streaks (
     user_id INTEGER PRIMARY KEY,
-    last_date TEXT,
+    previous_date TEXT,
     streak INTEGER
 );
 """)
@@ -75,7 +75,7 @@ def get_today_total(user_id, today):
 
 def ensure_streak_row(user_id):
     cursor.execute("""
-        INSERT INTO streaks (user_id, last_date, streak)
+        INSERT INTO streaks (user_id, previous_date, streak)
         VALUES (?, NULL, 0)
         ON CONFLICT(user_id) DO NOTHING
     """, (user_id,))
@@ -87,13 +87,14 @@ def ensure_streak_row(user_id):
 async def on_ready():
     print("jimbot online now")
 
+@bot.event
 async def on_guild_join(guild):
     channel = guild.system_channel
 
     if channel is None:
-        for text_channels in guild.text_channels:
-            if text_channels.permissions_for(guild.me).send_messages:
-                channel = text_channels
+        for text_channel in guild.text_channels:
+            if text_channel.permissions_for(guild.me).send_messages:
+                channel = text_channel
                 break
 
     if channel:
@@ -102,6 +103,11 @@ async def on_guild_join(guild):
 # !gym_add (time)
 @bot.command()
 async def gym_add(ctx, duration: int):
+
+    if duration <= 0:
+        await ctx.send("Duration must be a positive integer.")
+        return
+
     user_id = ctx.author.id
     username = ctx.author.name
 
@@ -123,66 +129,69 @@ async def gym_add(ctx, duration: int):
 
     conn.commit()
 
-    total = get_today_total(user_id, today)
+    total = get_today_total(user_id, today_str)
+    streak = 1
 
-    #make sure the user_id exists
-    ensure_streak_row(user_id)
+    if total > 0:
+        #make sure the user_id exists
+        ensure_streak_row(user_id)
 
-    # get streak data 
-    cursor.execute("""
-        SELECT last_date, streak
-        FROM streaks
-        WHERE user_id = ?
-    """, (user_id,))
-    row = cursor.fetchone()
+        # get streak data 
+        cursor.execute(""" SELECT previous_date, streak FROM streaks WHERE user_id = ? """, (user_id,))
+        row = cursor.fetchone()
 
-    last_date, streak = row
+        #this is for unpacking the tuple
+        previousDate, streak = row
 
-    # check yesterday activity
-    cursor.execute("""
-        SELECT duration
-        FROM gym_sessions
-        WHERE user_id = ? AND date = ?
-    """, (user_id, yesterday_str))
+        # check yesterday activity
+        cursor.execute(""" SELECT duration FROM gym_sessions WHERE user_id = ? AND date = ? """, (user_id, yesterday_str))
+        yesterday_row = cursor.fetchone()
 
-    yesterday_row = cursor.fetchone()
+        yesterday_active = yesterday_row is not None and yesterday_row[0] > 0
 
-    yesterday_active = yesterday_row is not None and yesterday_row[0] > 0
+        if previousDate is None:
+            streak = 1
 
+        elif previousDate == today_str:
+            pass
 
-    if last_date is None:
-        streak = 1
+        elif previousDate == yesterday_str and yesterday_active:
+            streak += 1
 
-    elif last_date == yesterday_str and yesterday_active:
-        streak += 1
+        else:
+            streak = 1
 
-    else:
-        streak = 1
+        # update the streak table 
+        cursor.execute("""
+            UPDATE streaks
+            SET previous_date = ?, streak = ?
+            WHERE user_id = ?
+        """, (today_str, streak, user_id))
 
-    # update the streak table 
-    cursor.execute("""
-        UPDATE streaks
-        SET last_date = ?, streak = ?
-        WHERE user_id = ?
-    """, (today_str, streak, user_id))
-
-    conn.commit()
+        conn.commit()
 
     #final output
     await ctx.send(
-            f"{username} trained {duration} min. Total today: {total} min 💪"
+            f"{username} trained {duration} min. Total today: {total} min"
             f"\n Current streak: {streak}🔥"
     )
 
     # generate heatmap based on the minutes in each day
 
+
 # !gym_remove (time)
 @bot.command()
 async def gym_remove(ctx, duration: int):
+    
+    if duration <= 0:
+        await ctx.send("Duration must be a positive integer.")
+        return
 
     user_id = ctx.author.id
     username = ctx.author.name
-    today = date.today().isoformat()
+
+    today = date.today()
+    today_str = today.isoformat()
 
     get_or_create_user(user_id, username)
 
@@ -191,14 +200,15 @@ async def gym_remove(ctx, duration: int):
         VALUES (?, ?, 0)
         ON CONFLICT(user_id, date)
         DO UPDATE SET duration = MAX(duration - ?, 0)
-    """, (user_id, today, duration))
+    """, (user_id, today_str, duration))
 
     conn.commit()
 
-    total = get_today_total(user_id, today)
+    total = get_today_total(user_id, today_str)
 
-    await ctx.send(
-        f"{username} removed {duration} min. Total today: {total} min"
-    )
+    if total == 0:
+        await ctx.send(f"{username}, you have no time logged today to remove from.")
+    else:
+        await ctx.send(f"{username} removed {duration} min. Total today: {total} min")
 
 bot.run(TOKEN)
